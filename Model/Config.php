@@ -95,31 +95,34 @@ class Config extends ParentConfig
     /**
      * Get Payment configuration status
      *
+     * @param integer $storeId
      * @return bool
      */
-    public function isActive()
+    public function isActive($storeId = null)
     {
-        return (bool)$this->getValue(self::KEY_ACTIVE, $this->getCurrentStore());
+        return (bool)$this->getValue(self::KEY_ACTIVE, $storeId);
     }
 
     /**
      * Get The Laybuy Merchant ID
      *
+     * @param integer $storeId
      * @return string
      */
-    public function getMerchantId()
+    public function getMerchantId($storeId = null)
     {
-        return $this->getValue(self::KEY_MERCHANT_ID, $this->getCurrentStore());
+        return $this->getValue(self::KEY_MERCHANT_ID, $storeId);
     }
 
     /**
      * Get teh laybuy API key (secret)
      *
+     * @param integer $storeId
      * @return string
      */
-    public function getApiKey()
+    public function getApiKey($storeId = null)
     {
-        $value = $this->getValue(self::KEY_API_KEY, $this->getCurrentStore());
+        $value = $this->getValue(self::KEY_API_KEY, $storeId);
         return $value ? $this->encryptor->decrypt($value) : $value;
     }
 
@@ -127,53 +130,44 @@ class Config extends ParentConfig
     /**
      * Gey Payment action
      *
+     * @param integer $storeId
      * @return mixed
      */
-    public function getPaymentAction()
+    public function getPaymentAction($storeId = null)
     {
-        return $this->getValue(self::PAYMENT_ACTION, $this->getCurrentStore());
+        return $this->getValue(self::PAYMENT_ACTION, $storeId);
     }
 
     /**
      * Get minimum order total
      *
+     * @param integer $storeId
      * @return mixed
      */
-    public function getMinOrderTotal()
+    public function getMinOrderTotal($storeId = null)
     {
-        return $this->getValue(self::KEY_MIN_ORDER_TOTAL, $this->getCurrentStore());
+        return $this->getValue(self::KEY_MIN_ORDER_TOTAL, $storeId);
     }
 
     /**
      * Get max order total
      *
+     * @param integer $storeId
      * @return mixed
      */
-    public function getMaxOrderTotal()
+    public function getMaxOrderTotal($storeId = null)
     {
-        return $this->getValue(self::KEY_MAX_ORDER_TOTAL, $this->getCurrentStore());
+        return $this->getValue(self::KEY_MAX_ORDER_TOTAL, $storeId);
     }
 
     /**
      * Get use sanbox flag
      *
+     * @param integer $storeId
      * @return string
      */
-    public function getUseSandbox()
+    public function getUseSandbox($storeId = null)
     {
-        return $this->getValue(self::USE_SANDBOX, $this->getCurrentStore());
-    }
-
-    /**
-     * @return int
-     * @throws \Magento\Framework\Exception\NoSuchEntityException
-     */
-    protected function getCurrentStore()
-    {
-        if (!$this->currentStore) {
-            $this->currentStore = $this->storeManager->getStore()->getId();
-        }
-
-        return $this->currentStore;
+        return $this->getValue(self::USE_SANDBOX, $storeId);
     }
 }
