@@ -206,7 +206,6 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
 
         if (!$quote ||
             !in_array($quote->getCurrency()->getQuoteCurrencyCode(), $this->_supportedCurrencyCodes) ||
-            !$this->httpClient->restClient ||
             $this->getConfigData('min_order_total') > $quote->getGrandTotal() ||
             $quote->getGrandTotal() > $this->getConfigData('max_order_total')
         ) {
@@ -269,7 +268,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
             $this->quoteValidator->validateBeforeSubmit($quote);
 
             $laybuyOrder = $this->createLaybuyOrder($quote);
-            $redirectUrl = $this->httpClient->getRedirectUrl($laybuyOrder);
+            $redirectUrl = $this->httpClient->getRedirectUrl($laybuyOrder, $quote->getStoreId());
 
             return $redirectUrl;
 
@@ -282,11 +281,12 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      * Confirms laybuy order
      *
      * @param $token
+     * @param null $storeId
      * @return bool|int
      */
-    public function laybuyConfirm($token)
+    public function laybuyConfirm($token, $storeId = null)
     {
-        $laybuyOrderId = $this->httpClient->getLaybuyConfirmationOrderId($token);
+        $laybuyOrderId = $this->httpClient->getLaybuyConfirmationOrderId($token, $storeId);
 
         $this->logger->debug([__METHOD__ . 'LAYBUY ORDER:' => $laybuyOrderId, 'TOKEN' => $token]);
 
@@ -295,11 +295,12 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
 
     /**
      * @param $token
+     * @param null $storeId
      * @return bool
      */
-    public function laybuyCancel($token)
+    public function laybuyCancel($token, $storeId = null)
     {
-        $laybuyCancelResult = $this->httpClient->cancelLaybuyOrder($token);
+        $laybuyCancelResult = $this->httpClient->cancelLaybuyOrder($token, $storeId);
         $this->logger->debug([__METHOD__ . 'LAYBUY CANCEL STATUS:' => $laybuyCancelResult, 'TOKEN' => $token]);
 
         return $laybuyCancelResult;
@@ -573,6 +574,8 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
             'amount' => (float)$amount
         ];
 
+        /** @var \Magento\Sales\Model\Order\Payment $payment */
+
         if ($payment->getCreditmemo() instanceof \Magento\Sales\Api\Data\CreditmemoInterface
             && $payment->getCreditmemo()->getIncrementId()) {
             // Optional, so only add this if a creditmemo has been attached.
@@ -581,7 +584,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
 
         $this->logger->debug([__METHOD__ . ' LAYBUY ORDER:' => $refundDetails['orderId']]);
 
-        $refundId = $this->httpClient->refundLaybuyOrder($refundDetails);
+        $refundId = $this->httpClient->refundLaybuyOrder($refundDetails, $payment->getOrder()->getStoreId());
         if ($refundId) {
             $payment->setLastTransId($refundId);
         }
