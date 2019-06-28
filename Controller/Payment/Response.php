@@ -68,10 +68,8 @@ class Response extends Action
 
         try {
             if ($this->laybuy->getConfigPaymentAction() == Laybuy::ACTION_AUTHORIZE_CAPTURE) {
-                if ($laybuyStatus == LaybuyConfig::LAYBUY_SUCCESS) {
-                    if ($laybuyOrderId = $this->laybuy->laybuyConfirm($token)) {
-                        $quote = $this->checkoutSession->getQuote();
-                        $quote->getPayment()->setAdditionalInformation(LaybuyConfig::LAYBUY_FIELD_REFERENCE_ORDER_ID, $laybuyOrderId);
+                    if ($quote->getPayment()->getAdditionalInformation('laybuy_grand_total') == $quote->getGrandTotal() && $laybuyOrderId = $this->laybuy->laybuyConfirm($token)) {
+                        $quote->getPayment()->setAdditionalInformation('Reference Order Id', $laybuyOrderId);
                         $quote->getPayment()->setAdditionalInformation('Token', $token);
 
                         $this->checkoutSession
