@@ -139,7 +139,7 @@ class LaybuyClient
         $this->apiKey = $config->getApiKey($storeId);
 
         try {
-            $restClient = new \Zend_Rest_Client($this->endpoint);
+            $restClient = new RestClient($this->endpoint);
             $restClient->getHttpClient()->setAuth($this->merchantId, $this->apiKey,
                 \Zend_Http_Client::AUTH_BASIC);
             return $restClient;
