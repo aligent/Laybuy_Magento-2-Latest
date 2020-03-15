@@ -65,6 +65,7 @@ class Response extends Action
 
         $token = $this->getRequest()->getParam('token');
         $laybuyStatus = $this->getRequest()->getParam('status');
+        /** @var \Magento\Quote\Api\Data\CartInterface $quote */
         $quote = $this->checkoutSession->getQuote();
         $merchantReference = $quote->getReservedOrderId();
 
@@ -74,7 +75,7 @@ class Response extends Action
                     $quote->getPayment()->getAdditionalInformation('Token') == $token) {
                     if ($quote->getPayment()->getAdditionalInformation('laybuy_grand_total') == $quote->getGrandTotal() && $laybuyOrderId = $this->laybuy->laybuyConfirm($token)) {
                         $quote->getPayment()->setAdditionalInformation(LaybuyConfig::LAYBUY_FIELD_REFERENCE_ORDER_ID, $laybuyOrderId);
-                        if(!$this->laybuy->getConfigData('store_token_data')) {
+                        if(!$this->laybuy->getConfigData('store_token_data', $quote->getStoreId())) {
                             $quote->getPayment()->unsAdditionalInformation('Token', $token);
                         }
 

@@ -222,13 +222,14 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      */
     public function isActive($storeId = null)
     {
+        /** @var \Magento\Quote\Api\Data\CartInterface $quote */
         $quote = $this->_checkoutSession->getQuote();
 
         if (!$quote ||
             !in_array($quote->getCurrency()->getQuoteCurrencyCode(), $this->_supportedCurrencyCodes) ||
             !$this->httpClient->restClient ||
-            $this->getConfigData('min_order_total') > $quote->getGrandTotal() ||
-            $quote->getGrandTotal() > $this->getConfigData('max_order_total')
+            $this->getConfigData('min_order_total', $quote->getStoreId()) > $quote->getGrandTotal() ||
+            $quote->getGrandTotal() > $this->getConfigData('max_order_total', $quote->getStoreId())
         ) {
             return false;
         }
@@ -413,14 +414,14 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
     }
 
     /**
-     * @param $order
+     * @param \Magento\Sales\Model\Order $order
      */
     public function sendOrderEmail($order)
     {
         try {
             $this->orderSender->send($order);
 
-            if ($this->getConfigData('send_invoice_to_customer')) {
+            if ($this->getConfigData('send_invoice_to_customer', $order->getStoreId())) {
                 foreach ($order->getInvoiceCollection() as $invoice) {
                     $this->invoiceSender->send($invoice);
                 }
@@ -449,7 +450,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
         $invoice->setTransactionId($txnId);
         $invoice->register();
 
-        if($this->getConfigData('send_invoice_to_customer')) {
+        if($this->getConfigData('send_invoice_to_customer', $order->getStoreId())) {
             $this->invoiceSender->send($invoice);
         }
         /** @var \Magento\Framework\DB\Transaction $transaction */
@@ -488,8 +489,8 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      */
     protected function validateQuote(\Magento\Quote\Model\Quote $quote)
     {
-        if (!$quote || !$quote->getItemsCount() || $this->getConfigData('min_order_total') > $quote->getGrandTotal() ||
-            $quote->getGrandTotal() > $this->getConfigData('max_order_total')) {
+        if (!$quote || !$quote->getItemsCount() || $this->getConfigData('min_order_total', $quote->getStoreId()) > $quote->getGrandTotal() ||
+            $quote->getGrandTotal() > $this->getConfigData('max_order_total', $quote->getStoreId())) {
             throw new \InvalidArgumentException(__("We can't initialize checkout."));
         }
     }
@@ -541,7 +542,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
         $laybuyOrder->customer->phone = $phone;
         $laybuyOrder->items = [];
 
-        if (!$this->getConfigData('transfer_line_items')) {
+        if (!$this->getConfigData('transfer_line_items', $quote->getStoreId())) {
             $laybuyOrder->items[0] = new \stdClass();
             $laybuyOrder->items[0]->id = 1;
             $laybuyOrder->items[0]->description = $quote->getReservedOrderId();
