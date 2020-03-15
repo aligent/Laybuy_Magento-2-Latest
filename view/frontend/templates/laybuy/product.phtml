@@ -3,58 +3,20 @@
  * @var $block \Overdose\Laybuy\Block\Catalog\Installments
  */
 ?>
-<?php if ($block->canShow()) : ?>
-    <div class="laybuy-installments laybuy-installments-amount"><span class="installments-amount"><?php echo __('or 6 interest-free payments of <strong>%1</strong> with', $block->getInstallmentsAmount())?></span>
-        <img src="<?php echo $block->getViewFileUrl('Laybuy_Laybuy::images/laybuy_logo_grape.svg'); ?>"/>
+<?php if ($block->canShow() && $block->showIn('product')) :?>
+    <?php if($block->getType() != 'grouped'): ?>
+    <div class="laybuy-installments laybuy-installments-amount" <?php if($block->getType() == 'bundle'): echo 'style="display:none;"'; endif; ?>>
+        <?php if($block->getType() != 'bundle'): ?>
+            <span class="installments-amount"><?php echo __('or 6 interest-free payments of <strong>%1</strong> with', $block->getInstallmentsAmount())?></span>
+        <?php else: ?>
+            <span class="installments-amount"><?php echo __('or 6 interest-free payments of <strong>%1</strong> with', $block->getInstallmentCurrency().number_format($block->getProductPrice()[0] / 6, 2).' - '.$block->getInstallmentCurrency().number_format($block->getProductPrice()[1] / 6, 2))?></span>
+        <?php endif; ?>
+        <img src="<?php echo $block->getLogo(); ?>"/>
         <a class="laybuy-modal-popup-trigger" href="#"><span class="icon icon-info"></span></a>
     </div>
     <div id="laybuy-modal-popup">
         <div class="laybuy-content-wrapper">
-            <h2 class="laybuy-title"><?php echo __('Laybuy'); ?></h2>
-            <div class="laybuy-content">
-                <p><?php echo __('Simply select Pay by Laybuy at checkout.') ?></p>
-                <p><?php echo __('Returning customers only need to confirm the order to complete the purchase.') ?></p>
-                <p><?php echo __('New customers can sign up at checkout and start using Laybuy today.') ?></p>
-                <p><?php echo __('Your order is processed immediately and your payment schedule is established.') ?></p>
-                <p><?php echo __('Only a sixth is due today and the rest is split over 5 weekly automatic payments on the day of the original purchase.') ?></p>
-            </div>
-            <div class="laybuy-steps">
-                <div class="laybuy-step">
-                    <div class="icon-wrapper">
-                        <img src="<?php echo $block->getViewFileUrl('Laybuy_Laybuy::images/popup-icons/laybuy-cart.png') ?>" alt="<?php echo __('Laybuy logo') ?>" class="step-icon">
-                    </div>
-                    <div class="laybuy-step-content">
-                        <p><?php echo __('Simply select <b>Pay by Laybuy</b> at checkout') ?></p>
-                    </div>
-                </div>
-                <div class="laybuy-step">
-                    <div class="icon-wrapper">
-                        <img src="<?php echo $block->getViewFileUrl('Laybuy_Laybuy::images/popup-icons/laybuy-mobile.png') ?>" alt="<?php echo __('Laybuy logo') ?>" class="step-icon">
-                    </div>
-                    <div class="laybuy-step-content">
-                        <p><?php echo __('Login or Register for Laybuy and complete your order in seconds') ?></p>
-                    </div>
-                </div>
-                <div class="laybuy-step">
-                    <div class="icon-wrapper">
-                        <img src="<?php echo $block->getViewFileUrl('Laybuy_Laybuy::images/popup-icons/laybuy-cc.png') ?>" alt="<?php echo __('Laybuy logo') ?>" class="step-icon">
-                    </div>
-                    <div class="laybuy-step-content">
-                        <p><?php echo __('Complete your purchase using an existing debit or credit card') ?></p>
-                    </div>
-                </div>
-                <div class="laybuy-step">
-                    <div class="icon-wrapper">
-                        <img src="<?php echo $block->getViewFileUrl('Laybuy_Laybuy::images/popup-icons/laybuy-laybuy.png') ?>" alt="<?php echo __('Laybuy logo') ?>" class="step-icon">
-                    </div>
-                    <div class="laybuy-step-content">
-                        <p><?php echo __('Pay over 6 weeks and receive your purchase now') ?></p>
-                    </div>
-                </div>
-            </div>
-            <div class="laybuy-logo-bottom">
-                <img src="<?php echo $block->getViewFileUrl('Laybuy_Laybuy::images/laybuy_logo_grape.svg') ?>" alt="<?php echo __('Laybuy logo') ?>">
-            </div>
+            <iframe src="<?php echo $block->getPopUpUrl(); ?>"></iframe>
         </div>
     </div>
     <script>
@@ -69,17 +31,35 @@
                 utils,
                 modal
             ) {
+                <?php if($block->getType() == 'bundle'): ?>
+                    var laybuy = $('.laybuy-installments.laybuy-installments-amount').clone().attr('style', '');
+                    $('.product-info-price').after(laybuy);
+                <?php endif; ?>
+
+                var currency = '<?php echo $block->getInstallmentCurrency(); ?>';
                 $(document).on('updatePrice', function(e){
-                    e.target.innerText.match(/[0-9 , \.]+/g).some(function(el) {
-                        let val;
-                        if(val = parseFloat(el)) {
-                            $('.laybuy-installments-amount span.installments-amount').html('or 6 interest free payments of <strong>'+ utils.formatPrice(val/6, {}) +'</strong> with');
-                            return;
+                    var priceBoxEl = e.target;
+                    $(e.target).parents().each(function(a,b) {
+                        if($(b).hasClass('product-info-main')) {
+                            var product = document.getElementById('product-price-'+$(priceBoxEl).data('product-id'));
+                            product.innerText.match(/[0-9 , \.]+/g).some(function(el) {
+                                let val;
+                                val = parseFloat(el.replace(',', ''));
+                                if(val) {
+                                    $('.laybuy-installments-amount span.installments-amount strong').html(utils.formatPrice(val/6, {}))
+                                }
+
+                                if(val == 0){
+                                    $('.laybuy-installments-amount span.installments-amount strong').html(currency+'0.00');
+                                }
+                            });
                         }
-                    });
+                    })
                 });
 
+
                 var options = {
+                    type: 'popup',
                     responsive: true,
                     innerScroll: false,
                     clickableOverlay: true,
@@ -95,4 +75,66 @@
             }
         );
     </script>
+    <?php else: ?>
+        <div style="display:none;">
+            <div class="laybuy-installments laybuy-installments-amount"><span class="installments-amount"></span>
+                <img src="<?php echo $block->getLogo(); ?>"/>
+                <a class="laybuy-modal-popup-trigger" href="#"><span class="icon icon-info"></span></a>
+            </div>
+        </div>
+        <div id="laybuy-modal-popup">
+            <div class="laybuy-content-wrapper">
+                <iframe src="<?php echo $block->getPopUpUrl(); ?>"></iframe>
+            </div>
+        </div>
+        <script>
+        require(
+            [
+                'jquery',
+                'Magento_Catalog/js/price-utils',
+                'Magento_Ui/js/modal/modal'
+            ],
+            function(
+                $,
+                utils,
+                modal
+            ) {
+
+                var priceBoxes = $('.table-wrapper.grouped .price-box.price-final_price');
+
+                var laybuy = $('.laybuy-installments.laybuy-installments-amount').clone();
+                priceBoxes.append(laybuy);
+
+                priceBoxes.each(function(){
+                    var element = this;
+                    var product_id = $(element).data('product-id');
+                    var product = document.getElementById('product-price-'+product_id);
+                    product.innerText.match(/[0-9 , \.]+/g).some(function(el) {
+                        let val;
+                        console.log(val = parseFloat(el.replace(',', '')));
+                        if(val = parseFloat(el.replace(',', ''))) {
+                            $('.laybuy-installments-amount span.installments-amount',element).html('or 6 interest free payments of <strong>'+utils.formatPrice(val/6, {decimalSymbol:'.'})+'</strong> with ');
+                        } 
+                    });
+                });
+
+
+                var options = {
+                    type: 'popup',
+                    responsive: true,
+                    innerScroll: false,
+                    clickableOverlay: true,
+                    modalClass: 'laybuy-learn-more',
+                    buttons: []
+                };
+
+                var popup = modal(options, $('#laybuy-modal-popup'));
+
+                $( ".laybuy-modal-popup-trigger" ).on( "click", function() {
+                    $('#laybuy-modal-popup').modal('openModal');
+                });
+            }
+        );
+    </script>
+    <?php endif; ?>
 <?php endif; ?>
