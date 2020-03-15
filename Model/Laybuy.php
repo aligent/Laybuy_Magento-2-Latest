@@ -227,7 +227,6 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
 
         if (!$quote ||
             !in_array($quote->getCurrency()->getQuoteCurrencyCode(), $this->_supportedCurrencyCodes) ||
-            !$this->httpClient->restClient ||
             $this->getConfigData('min_order_total', $quote->getStoreId()) > $quote->getGrandTotal() ||
             $quote->getGrandTotal() > $this->getConfigData('max_order_total', $quote->getStoreId())
         ) {
