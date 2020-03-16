@@ -36,6 +36,14 @@ class Config extends ParentConfig
 
     const KEY_API_KEY = 'merchant_api_key';
 
+    const KEY_SHOW_IN_PRODUCT_PAGE = 'show_in_product_page';
+
+    const KEY_SHOW_IN_CATEGORY_PAGE = 'show_in_category_page';
+
+    const KEY_SHOW_IN_CART_PAGE = 'show_in_cart_page';
+
+    const KEY_SHOW_FULL_LOGO = 'show_full_logo';
+
     const API_ENDPOINT_LIVE = 'https://api.laybuy.com';
 
     const API_ENDPOINT_SANDBOX = 'https://sandbox-api.laybuy.com';
@@ -48,6 +56,8 @@ class Config extends ParentConfig
 
     const API_ORDER_REFUND = '/order/refund';
 
+    const API_ORDER_CHECK = '/order/merchant';
+
     const LAYBUY_SUCCESS = 'SUCCESS';
 
     const LAYBUY_FAILURE = 'ERROR';
@@ -57,6 +67,12 @@ class Config extends ParentConfig
     const LAYBUY_FIELD_REFERENCE_ORDER_ID = 'Reference Order Id';
 
     const SUPPORTED_CURRENCY_CODES = ['NZD', 'AUD', 'GBP'];
+
+    const FULL_LOGO = 'logo/full.svg';
+
+    const SMALL_LOGO = 'logo/small.svg';
+
+    const ASSET_URL = 'https://integration-assets.laybuy.com/magento1_laybuy/';
 
     /**
      * @var EncryptorInterface
@@ -101,6 +117,65 @@ class Config extends ParentConfig
     public function isActive($storeId = null)
     {
         return (bool)$this->getValue(self::KEY_ACTIVE, $storeId);
+    }
+
+    /**
+     * Get Show In Page Configuration
+     *
+     * @param integer $storeId
+     * @return bool
+     */
+    public function showInProductPage($storeId = null)
+    {
+        return (bool)$this->getValue(self::KEY_SHOW_IN_PRODUCT_PAGE, $storeId);
+    }
+
+    /**
+     * Get Show In Category Configuration
+     *
+     * @param integer $storeId
+     * @return bool
+     */
+    public function showInCategoryPage($storeId = null)
+    {
+        return (bool)$this->getValue(self::KEY_SHOW_IN_CATEGORY_PAGE, $storeId);
+    }
+
+    /**
+     * Get Show In Cart Configuration
+     *
+     * @param integer $storeId
+     * @return bool
+     */
+    public function showInCartPage($storeId = null)
+    {
+        return (bool)$this->getValue(self::KEY_SHOW_IN_CART_PAGE, $storeId);
+    }
+
+    /**
+     * Get Payment configuration status
+     *
+     * @param integer $storeId
+     * @return string
+     */
+    public function getLogo($storeId = null)
+    {
+        if((bool)$this->getValue(self::KEY_SHOW_FULL_LOGO, $storeId)){
+            return self::FULL_LOGO;
+        } else {
+            return self::SMALL_LOGO;
+        }
+
+    }
+
+    /**
+     * Get Image from CDN path
+     *
+     * @return string
+     */
+    public function getMagentoAssetUrl($imagePath)
+    {
+        return self::ASSET_URL.$imagePath;
     }
 
     /**

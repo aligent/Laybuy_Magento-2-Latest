@@ -51,8 +51,15 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      */
     protected $logger;
 
-
+    /**
+     * @var \Magento\Sales\Model\Order\Email\Sender\OrderSender
+     */
     protected $orderSender;
+
+    /**
+     * @var \Magento\Sales\Model\Order\Email\Sender\InvoiceSender
+     */
+    protected $invoiceSender;
 
     /**
      * @var \Magento\Sales\Model\Order\Config
@@ -90,6 +97,16 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
     protected $_canRefund = true;
 
     /**
+     * @var bool
+     */
+    protected $_canRefundInvoicePartial = true;
+
+    /**
+     * @var bool
+     */
+    protected $_canOrder = true;
+
+    /**
      * @var \Magento\Framework\View\Asset\Repository
      */
     protected $_assetRepo;
@@ -110,6 +127,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      * @param \Magento\Framework\DB\TransactionFactory $transactionFactory
      * @param \Magento\Sales\Model\Service\InvoiceService $invoiceService
      * @param \Magento\Sales\Model\Order\Email\Sender\OrderSender $orderSender
+     * @param \Magento\Sales\Model\Order\Email\Sender\InvoiceSender $invoiceSender
      * @param \Magento\Sales\Model\Order\Config $salesOrderConfig
      * @param \Magento\Checkout\Model\Session $checkoutSession
      * @param \Magento\Framework\Exception\LocalizedExceptionFactory $exception
@@ -135,6 +153,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
         \Magento\Framework\DB\TransactionFactory $transactionFactory,
         \Magento\Sales\Model\Service\InvoiceService $invoiceService,
         \Magento\Sales\Model\Order\Email\Sender\OrderSender $orderSender,
+        \Magento\Sales\Model\Order\Email\Sender\InvoiceSender $invoiceSender,
         \Magento\Sales\Model\Order\Config $salesOrderConfig,
         \Magento\Checkout\Model\Session $checkoutSession,
         \Magento\Framework\Exception\LocalizedExceptionFactory $exception,
@@ -170,6 +189,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
         $this->logger = $logger;
         $this->salesOrderConfig = $salesOrderConfig;
         $this->orderSender = $orderSender;
+        $this->invoiceSender = $invoiceSender;
         $this->transactionFactory = $transactionFactory;
         $this->invoiceService = $invoiceService;
     }
@@ -202,12 +222,14 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      */
     public function isActive($storeId = null)
     {
+        /** @var \Magento\Quote\Api\Data\CartInterface $quote */
         $quote = $this->_checkoutSession->getQuote();
 
         if (!$quote ||
             !in_array($quote->getCurrency()->getQuoteCurrencyCode(), $this->_supportedCurrencyCodes) ||
-            $this->getConfigData('min_order_total') > $quote->getGrandTotal() ||
-            $quote->getGrandTotal() > $this->getConfigData('max_order_total')
+            !$this->httpClient->restClient ||
+            $this->getConfigData('min_order_total', $quote->getStoreId()) > $quote->getGrandTotal() ||
+            $quote->getGrandTotal() > $this->getConfigData('max_order_total', $quote->getStoreId())
         ) {
             return false;
         }
@@ -263,15 +285,29 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
             if ($this->getConfigPaymentAction() == self::ACTION_AUTHORIZE_CAPTURE) {
                 $payment = $quote->getPayment();
                 $payment->setMethod(LaybuyConfig::CODE);
+            } else {
+                $payment = $quote->getPayment();
+                $payment->setMethod(LaybuyConfig::CODE);
                 $payment->setAdditionalInformation('laybuy_grand_total', $quote->getGrandTotal());
             }
 
             $this->quoteValidator->validateBeforeSubmit($quote);
 
             $laybuyOrder = $this->createLaybuyOrder($quote);
-            $redirectUrl = $this->httpClient->getRedirectUrl($laybuyOrder, $quote->getStoreId());
+            $data = $this->httpClient->getRedirectUrlAndToken($laybuyOrder, $quote->getStoreId());
 
-            return $redirectUrl;
+            if(!$data || !isset($data['redirectUrl']) || !isset($data['token'])) {
+                return false;
+            }
+
+            if ($this->getConfigPaymentAction() == self::ACTION_AUTHORIZE_CAPTURE) {
+                $payment = $quote->getPayment();
+                $payment->setAdditionalInformation('laybuy_grand_total', $quote->getGrandTotal());
+                $payment->setAdditionalInformation('Token', $data['token']);
+                $payment->save();
+            }
+
+            return $data['redirectUrl'];
 
         } catch (\Exception $e) {
             $this->logger->debug([__METHOD__ . ' ERROR LAYBUY REDIRECT ' . $e->getMessage() . " " => $e->getTraceAsString()]);
@@ -378,12 +414,18 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
     }
 
     /**
-     * @param $order
+     * @param \Magento\Sales\Model\Order $order
      */
     public function sendOrderEmail($order)
     {
         try {
             $this->orderSender->send($order);
+
+            if ($this->getConfigData('send_invoice_to_customer', $order->getStoreId())) {
+                foreach ($order->getInvoiceCollection() as $invoice) {
+                    $this->invoiceSender->send($invoice);
+                }
+            }
         } catch (\Exception $e) {
             $this->_logger->critical($e);
         }
@@ -391,11 +433,11 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
 
     /**
      * @param \Magento\Sales\Model\Order $order
-     * @param $orderId
+     * @param $txnId
      * @throws \Exception
      * @throws \Magento\Framework\Exception\LocalizedException
      */
-    public function createInvoiceAndUpdateOrder(\Magento\Sales\Model\Order $order, $orderId, $laybuyOrderId)
+    public function createInvoiceAndUpdateOrder(\Magento\Sales\Model\Order $order, $txnId, $laybuyOrderId)
     {
 
         $order->setState(\Magento\Sales\Model\Order::STATE_PROCESSING)
@@ -405,8 +447,12 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
 
         $invoice = $this->invoiceService->prepareInvoice($order);
         $invoice->setRequestedCaptureCase(\Magento\Sales\Model\Order\Invoice::CAPTURE_ONLINE);
+        $invoice->setTransactionId($txnId);
         $invoice->register();
 
+        if($this->getConfigData('send_invoice_to_customer', $order->getStoreId())) {
+            $this->invoiceSender->send($invoice);
+        }
         /** @var \Magento\Framework\DB\Transaction $transaction */
         $transaction = $this->transactionFactory->create();
         $transaction->addObject($order)
@@ -443,8 +489,8 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
      */
     protected function validateQuote(\Magento\Quote\Model\Quote $quote)
     {
-        if (!$quote || !$quote->getItemsCount() || $this->getConfigData('min_order_total') > $quote->getGrandTotal() ||
-            $quote->getGrandTotal() > $this->getConfigData('max_order_total')) {
+        if (!$quote || !$quote->getItemsCount() || $this->getConfigData('min_order_total', $quote->getStoreId()) > $quote->getGrandTotal() ||
+            $quote->getGrandTotal() > $this->getConfigData('max_order_total', $quote->getStoreId())) {
             throw new \InvalidArgumentException(__("We can't initialize checkout."));
         }
     }
@@ -496,7 +542,7 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
         $laybuyOrder->customer->phone = $phone;
         $laybuyOrder->items = [];
 
-        if (!$this->getConfigData('transfer_line_items')) {
+        if (!$this->getConfigData('transfer_line_items', $quote->getStoreId())) {
             $laybuyOrder->items[0] = new \stdClass();
             $laybuyOrder->items[0]->id = 1;
             $laybuyOrder->items[0]->description = $quote->getReservedOrderId();
@@ -563,6 +609,32 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
     }
 
     /**
+     * @param \Magento\Sales\Model\Order $order
+     * @param $txnId
+     * @return bool
+     */
+    public function addTransactionId(\Magento\Sales\Model\Order $order,$txnId)
+    {
+        if(!$order->hasInvoices())
+        {
+            return false;
+        }
+
+        foreach($order->getInvoiceCollection() as $invoice)
+        {
+            $invoice->setTransactionId($txnId);
+            $invoice->save();
+
+             $this->logger->debug([
+                'Invoice Id ' => $invoice->getId(),
+                'Transaction Id ' => $invoice->getTransactionId()
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
      * @param \Magento\Payment\Model\InfoInterface $payment
      * @param float $amount
      * @return $this
@@ -584,8 +656,9 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
             'amount' => (float)$amount
         ];
 
-        /** @var \Magento\Sales\Model\Order\Payment $payment */
+        $this->logger->debug([__METHOD__ . 'REFUND DETAILS:' => $refundDetails]);
 
+        /** @var \Magento\Sales\Model\Order\Payment $payment */
         if ($payment->getCreditmemo() instanceof \Magento\Sales\Api\Data\CreditmemoInterface
             && $payment->getCreditmemo()->getIncrementId()) {
             // Optional, so only add this if a creditmemo has been attached.
@@ -599,6 +672,69 @@ class Laybuy extends \Magento\Payment\Model\Method\AbstractMethod
             $payment->setLastTransId($refundId);
         }
         return $this;
+    }
+
+    /**
+     * Confirms Laybuy Order Status
+     * @param $laybuyOrderId
+     * @param $amount
+     * @param $storeId
+     * @return boolean
+     */
+    public function refundLaybuy($laybuyOrderId, $amount, $storeId)
+    {
+
+        if (!$laybuyOrderId || !$amount) {
+            $this->logger->debug(['Unable to process refund, laybuy order details are missing.']);
+            return false;
+        }
+
+        if(!$storeId)
+        {
+            $storeId = $this->_storeManager->getStore()->getId();
+        }
+
+        // Mandatory fields
+        $refundDetails = [
+            'orderId' => $laybuyOrderId,
+            'amount' => (float)$amount
+        ];
+
+        $this->logger->debug([__METHOD__ . 'REFUND DETAILS:' => $refundDetails]);
+
+        $laybuyResponse = $this->httpClient->refundLaybuyOrder($refundDetails, $storeId);
+
+        $this->logger->debug([__METHOD__ . 'LAYBUY REFUND RESPONSE:' => $laybuyResponse, 'STORE ID' => $storeId]);
+
+        return $laybuyResponse;
+    }
+
+    public function initialize($paymentAction, $stateObject)
+    {
+        $stateObject->setData('status', \Magento\Sales\Model\Order::STATE_PENDING_PAYMENT);
+        $stateObject->setData('state', \Magento\Sales\Model\Order::STATE_PENDING_PAYMENT);
+        return parent::initialize($paymentAction, $stateObject);
+    }
+
+    /**
+     * @return bool
+     */
+    public function isInitializeNeeded()
+    {
+        return $this->getConfigPaymentAction() !== self::ACTION_AUTHORIZE_CAPTURE;
+    }
+
+    /**
+     * Confirms Laybuy Order Status
+     * @param $merchantReference
+     * @return array
+     */
+    public function laybuyCheckOrder($merchantReference)
+    {
+        $laybuyCheckResult = $this->httpClient->checkMerchantOrder($merchantReference);
+        $this->logger->debug([__METHOD__ . 'LAYBUY ORDER STATUS:' => $laybuyCheckResult, 'MERCHANT REFERENCE' => $merchantReference]);
+
+        return $laybuyCheckResult;
     }
 }
 

@@ -65,13 +65,19 @@ class Response extends Action
 
         $token = $this->getRequest()->getParam('token');
         $laybuyStatus = $this->getRequest()->getParam('status');
+        /** @var \Magento\Quote\Api\Data\CartInterface $quote */
+        $quote = $this->checkoutSession->getQuote();
+        $merchantReference = $quote->getReservedOrderId();
 
         try {
             if ($this->laybuy->getConfigPaymentAction() == Laybuy::ACTION_AUTHORIZE_CAPTURE) {
-                if ($laybuyStatus == LaybuyConfig::LAYBUY_SUCCESS && $quote = $this->checkoutSession->getQuote()) {
+                if ($laybuyStatus == LaybuyConfig::LAYBUY_SUCCESS && $quote &&
+                    $quote->getPayment()->getAdditionalInformation('Token') == $token) {
                     if ($quote->getPayment()->getAdditionalInformation('laybuy_grand_total') == $quote->getGrandTotal() && $laybuyOrderId = $this->laybuy->laybuyConfirm($token)) {
-                        $quote->getPayment()->setAdditionalInformation('Reference Order Id', $laybuyOrderId);
-                        $quote->getPayment()->setAdditionalInformation('Token', $token);
+                        $quote->getPayment()->setAdditionalInformation(LaybuyConfig::LAYBUY_FIELD_REFERENCE_ORDER_ID, $laybuyOrderId);
+                        if(!$this->laybuy->getConfigData('store_token_data', $quote->getStoreId())) {
+                            $quote->getPayment()->unsAdditionalInformation('Token', $token);
+                        }
 
                         $this->checkoutSession
                             ->setLastQuoteId($quote->getId())
@@ -79,13 +85,20 @@ class Response extends Action
                             ->clearHelperData();
 
                         $quote->collectTotals();
-
+                        $this->logger->debug([
+                            'Quote ID:' => $quote->getId(),
+                            'Token:' => $token,
+                            'Laybuy Order ID:' => $laybuyOrderId,
+                            'Payment ID:' => $quote->getPayment()->getId()
+                        ]);
                         $orderId = $this->cartManagement->placeOrder($quote->getId());
 
                         $order = $this->checkoutSession->getLastRealOrder();
 
                         if ($orderId && $order) {
 
+                            $txnId = $laybuyOrderId . '_' . $token;
+                            $this->laybuy->addTransactionId($order,$txnId);
                             $this->laybuy->sendOrderEmail($order);
 
                             $this->logger->debug([
@@ -169,8 +182,12 @@ class Response extends Action
             $this->logger->debug(['process error ' => $e->getTraceAsString()]);
             $this->messageManager->addExceptionMessage($e, $e->getMessage());
 
-            if (!$order->getId()) {
+            if (!isset($orderId) || isset($order) && !$order->getId()) {
                 $this->laybuy->laybuyCancel($token);
+            }
+
+            if($laybuyOrder = $this->laybuy->laybuyCheckOrder($merchantReference)) {
+                $this->laybuy->refundLaybuy($laybuyOrder->orderId, $laybuyOrder->amount, $quote->getStoreId());
             }
 
             return $this->_redirect('checkout/cart', ['_secure' => true]);

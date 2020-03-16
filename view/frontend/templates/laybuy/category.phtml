@@ -1,0 +1,108 @@
+<?php
+/**
+ * @var $block \Overdose\Laybuy\Block\Catalog\Installments
+ */
+?>
+<?php if ($block->canShow() && $block->showIn('category')) : ?>
+    <div style="display:none;">
+        <div class="laybuy-installments laybuy-installments-amount"><span class="installments-amount"></span>
+            <img src="<?php echo $block->getLogo(); ?>"/>
+            <a class="laybuy-modal-popup-trigger" href="#"><span class="icon icon-info"></span></a>
+        </div>
+    </div>
+    <div id="laybuy-modal-popup">
+        <div class="laybuy-content-wrapper">
+            <iframe src="<?php echo $block->getPopUpUrl(); ?>"></iframe>
+        </div>
+    </div>
+    <script>
+        require(
+            [
+                'jquery',
+                'Magento_Catalog/js/price-utils',
+                'Magento_Ui/js/modal/modal'
+            ],
+            function(
+                $,
+                utils,
+                modal
+            ) {
+
+                var laybuy = $('.laybuy-installments.laybuy-installments-amount').clone();
+                $('.price-box.price-final_price').append(laybuy);
+
+                $('.price-box.price-final_price').each(function(){
+                    priceUpdate(this);
+                });
+
+                $(document).on('updatePrice', function(e){
+                    priceUpdate(e.target);
+                });
+
+                function priceUpdate(element)
+                {   
+                    var min_order = '<?php echo $block->getMinOrderTotal(); ?>';
+                    var product_id = $(element).data('product-id');
+                    var product = document.getElementById('product-price-'+product_id);
+                    var price = 0;
+                    var bundle = false;
+                    var currency = '<?php echo $block->getInstallmentCurrency(); ?>';
+                    if(product == null)
+                    {
+                        if($('.price-container.price-final_price',element).length){
+                            product = $('.price-container.price-final_price',element)[0];
+                        }
+
+                        if($('#from-'+product_id).length && $('#to-'+product_id).length){
+                           price = currency+utils.formatPrice($('#from-'+product_id).data('price-amount')/6, {decimalSymbol:'.'})+' - '+currency+utils.formatPrice($('#to-'+product_id).data('price-amount')/6, {decimalSymbol:'.'});
+                           bundle = true;
+                        }
+
+                        if($('.minimal-price',element).length) {
+                            product = $('.minimal-price',element)[0];
+                        }
+                        
+                    }
+
+                    if(!bundle)
+                    {
+                        product.innerText.match(/[0-9 , \.]+/g).some(function(el) {
+                            let val;
+                            val = parseFloat(el.replace(',', ''));
+                            if(val) {
+                                price = utils.formatPrice(val/6, {decimalSymbol:'.'});
+                            } 
+
+                            if(val == 0) {
+                                $('.laybuy-installments-amount',element).remove();
+                            }
+                        });
+                    }
+
+                    $('.laybuy-installments-amount span.installments-amount',element).html('or 6 interest free payments of <strong>'+price+'</strong> with ');
+
+                    if($('.laybuy-installments-amount span.installments-amount strong',element).text().indexOf(currency) < 0){
+
+                        $('.laybuy-installments-amount span.installments-amount strong',element).prepend(currency);
+                    }
+                    
+                }
+
+                var options = {
+                    type: 'popup',
+                    responsive: true,
+                    innerScroll: false,
+                    clickableOverlay: true,
+                    modalClass: 'laybuy-learn-more',
+                    buttons: []
+                };
+
+                var popup = modal(options, $('#laybuy-modal-popup'));
+
+                $( ".laybuy-modal-popup-trigger" ).on( "click", function() {
+                    $('#laybuy-modal-popup').modal('openModal');
+                });
+            }
+        );
+    </script>
+<?php endif; ?>

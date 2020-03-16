@@ -7,9 +7,11 @@ define([
     'Magento_Customer/js/customer-data',
     'Magento_Customer/js/model/customer',
     'Magento_Checkout/js/model/payment/additional-validators',
+    'Magento_Checkout/js/action/set-billing-address',
+    'Magento_Ui/js/model/messageList',
     'Magento_Checkout/js/action/redirect-on-success',
     'mage/url'
-], function ($, Component, quote, setPaymentMethodAction, customerData, customer, additionalValidators, redirectOnSuccessAction, url) {
+], function ($, Component, quote, setPaymentMethodAction, customerData, customer, additionalValidators, setBillingAddressAction, globalMessageList, redirectOnSuccessAction, url) {
     'use strict';
 
     return Component.extend({
@@ -45,6 +47,22 @@ define([
             return window.checkoutConfig.payment['laybuy_payment'].logoSrc;
         },
 
+        getLaybuyImagePaySrc: function() {
+            return window.checkoutConfig.payment['laybuy_payment'].checkoutPaySrc;
+        },
+
+        getLaybuyImageScheduleSrc: function() {
+            return window.checkoutConfig.payment['laybuy_payment'].checkoutScheduleSrc;
+        },
+
+        getLaybuyImageCompleteSrc: function() {
+            return window.checkoutConfig.payment['laybuy_payment'].checkoutCompleteSrc;
+        },
+
+        getLaybuyImageDoneSrc: function() {
+            return window.checkoutConfig.payment['laybuy_payment'].checkoutDoneSrc;
+        },
+
         getRedirectUrl: function() {
             var laybuyUrl, redirectUrl, self = this;
 
@@ -67,7 +85,9 @@ define([
                     redirectUrl = data.redirect_url;
 
                     if (window.checkoutConfig.payment['laybuy_payment'].paymentAction == 'authorize_capture') {
-                        $.mage.redirect(redirectUrl);
+                        setBillingAddressAction(globalMessageList).success(function() {
+                            $.mage.redirect(redirectUrl);
+                        })
                     } else {
                         self.getPlaceOrderDeferredObject()
                             .fail(

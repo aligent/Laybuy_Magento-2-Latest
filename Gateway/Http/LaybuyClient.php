@@ -35,7 +35,7 @@ class LaybuyClient
     /**
      * @var Config
      */
-    private $config;
+    protected $config;
 
     /**
      * LaybuyClient constructor.
@@ -57,19 +57,22 @@ class LaybuyClient
      * @param $storeId
      * @return bool
      */
-    public function getRedirectUrl($laybuyOrder, $storeId)
+    public function getRedirectUrlAndToken($laybuyOrder, $storeId)
     {
         $restClient = $this->setupLaybuyClient($this->config, $storeId);
         $response = $restClient->restPost(Config::API_ORDER_CREATE, json_encode($laybuyOrder));
         $body = json_decode($response->getBody());
+        $returnData = [];
         $this->logger->debug([__METHOD__ => $body]);
 
         if ($body->result == Config::LAYBUY_SUCCESS) {
-            if (!$body->paymentUrl) {
+            if (!$body->paymentUrl || !$body->token) {
                 return false;
             }
+            $returnData['redirectUrl'] = $body->paymentUrl;
+            $returnData['token'] = $body->token;
 
-            return $body->paymentUrl;
+            return $returnData;
         }
 
         return false;
@@ -161,11 +164,36 @@ class LaybuyClient
 
         $body = json_decode($response->getBody());
 
-        if (!$body->result === Config::LAYBUY_SUCCESS) {
+        $this->logger->debug([
+            'Refund Response:' => $body,
+            'Store ID:' => $storeId
+        ]);
+
+        if ($body->result === Config::LAYBUY_FAILURE) {
             $this->logger->debug(['Error while processing refund: ' . $response->getBody()]);
             throw new LocalizedException(__('Unable to process refund.'));
         }
 
         return $body->refundId;
+    }
+
+     /**
+     * @param $token
+     * @param $storeId
+     * @return array
+     */
+    public function checkMerchantOrder($merchantReference, $storeId)
+    {
+        $restClient = $this->setupLaybuyClient($this->config, $storeId);
+        $response = $this->restClient->restGet(Config::API_ORDER_CHECK . '/' . $merchantReference);
+        $body = json_decode($response->getBody());
+
+        $this->logger->debug(['method' => __METHOD__, 'Response' => $body]);
+
+        if ($body->result == Config::LAYBUY_SUCCESS) {
+            return $body;
+        }
+
+        return false;
     }
 }
